@@ -1,0 +1,12 @@
+[project]
+name = "image-tool"
+version = "1.0.0"
+description = "读取图片信息并完成简单编辑的命令行工具（课程作业）"
+requires-python = ">=3.10"
+dependencies = [
+    "opencv-python>=4.9.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

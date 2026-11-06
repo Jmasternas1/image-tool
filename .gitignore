@@ -1,0 +1,17 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyc
+
+# 虚拟环境（不要提交）
+.venv/
+venv/
+env/
+
+# 测试用的图片与输出结果（不提交）
+samples/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
