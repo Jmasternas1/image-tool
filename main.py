@@ -1,11 +1,15 @@
 """图片信息读取与简单编辑命令行工具（课程作业）。
 
 用法示例：
-    python main.py info   demo.jpg
-    python main.py resize demo.jpg --width 800
-    python main.py crop   demo.jpg --left 10 --top 10 --right 200 --bottom 200
+    python main.py info    demo.jpg
+    python main.py resize  demo.jpg --width 800
+    python main.py crop    demo.jpg --left 10 --top 10 --right 200 --bottom 200
+    python main.py rotate  demo.jpg --angle 90
+    python main.py flip    demo.jpg --mode horizontal
+    python main.py gray    demo.jpg
+    python main.py convert demo.png --format jpg
 
-当前状态：已实现信息读取、缩放、裁剪；旋转/翻转/灰度/格式转换待补充。
+所有编辑结果都保存为“新文件”，不覆盖原图，并打印保存路径。
 """
 
 import argparse
@@ -20,7 +24,7 @@ import cv2
 # ---------------------------------------------------------------------------
 
 def _load(path):
-    """读取图片；统一处理 文件不存在 和 不是有效图片 两种错误。"""
+    """读取图片；统一处理“文件不存在”和“不是有效图片”两种错误。"""
     if not os.path.isfile(path):
         raise FileNotFoundError(f"文件不存在: {path}")
     # IMREAD_UNCHANGED 会保留透明通道(Alpha)，方便后续处理 PNG
@@ -31,7 +35,7 @@ def _load(path):
 
 
 def _save(img, path):
-    """保存图片，并处理带透明通道的 PNG 存成 JPG 前先转 RGB 的要求。"""
+    """保存图片，并处理“带透明通道的 PNG 存成 JPG 前先转 RGB”的要求。"""
     ext = os.path.splitext(path)[1].lower()
     out = img
     if ext in (".jpg", ".jpeg") and img.ndim == 3 and img.shape[2] == 4:
@@ -54,7 +58,11 @@ def _new_path(path, suffix):
 
 def read_info(path):
     """返回图片的基础信息字典：文件名、格式、宽、高、颜色模式、文件大小。"""
-    img = _load(path)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"文件不存在: {path}")
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    if img is None:
+        raise ValueError(f"无法读取图片，可能不是有效的图片文件: {path}")
 
     h, w = img.shape[:2]
     channels = 1 if img.ndim == 2 else img.shape[2]
@@ -121,6 +129,60 @@ def crop(path, left, top, right, bottom, output=None):
     return result, _save(result, out)
 
 
+def rotate(path, angle, output=None):
+    """旋转：仅支持 90 / 180 / 270 度。"""
+    if angle not in (90, 180, 270):
+        raise ValueError("旋转角度仅支持 90、180、270")
+    img = _load(path)
+    if angle == 90:
+        result = cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    elif angle == 180:
+        result = cv2.rotate(img, cv2.ROTATE_180)
+    else:  # 270
+        result = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    out = output or _new_path(path, f"rotate{angle}")
+    return result, _save(result, out)
+
+
+def flip(path, mode, output=None):
+    """翻转：horizontal 水平翻转，vertical 垂直翻转。"""
+    if mode == "horizontal":
+        code = 1          # cv2.flip 的 code：1 = 水平翻转
+    elif mode == "vertical":
+        code = 0          # 0 = 垂直翻转
+    else:
+        raise ValueError("翻转模式仅支持 horizontal 或 vertical")
+    img = _load(path)
+    result = cv2.flip(img, code)
+    out = output or _new_path(path, f"flip_{mode}")
+    return result, _save(result, out)
+
+
+def grayscale(path, output=None):
+    """灰度化：彩色/带透明通道图转单通道灰度图。"""
+    img = _load(path)
+    if img.ndim == 2:
+        result = img  # 本来就是灰度
+    elif img.shape[2] == 4:
+        result = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+    else:
+        result = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    out = output or _new_path(path, "gray")
+    return result, _save(result, out)
+
+
+def convert(path, fmt, output=None):
+    """格式转换：根据目标扩展名重新保存（透明通道在存 JPG 时自动转 RGB）。"""
+    fmt = fmt.lower().lstrip(".")
+    if fmt not in ("jpg", "jpeg", "png", "bmp", "tiff"):
+        raise ValueError(f"不支持的目标格式: {fmt}")
+    img = _load(path)
+    base = os.path.splitext(path)[0]
+    ext = ".jpg" if fmt == "jpeg" else f".{fmt}"
+    out = output or f"{base}.{fmt}"
+    return img, _save(img, out)
+
+
 # ---------------------------------------------------------------------------
 # 命令行入口
 # ---------------------------------------------------------------------------
@@ -156,6 +218,25 @@ def main():
     p_crop.add_argument("--bottom", type=int, required=True)
     p_crop.add_argument("--output")
 
+    p_rotate = sub.add_parser("rotate", help="旋转 90/180/270")
+    p_rotate.add_argument("path")
+    p_rotate.add_argument("--angle", type=int, required=True)
+    p_rotate.add_argument("--output")
+
+    p_flip = sub.add_parser("flip", help="翻转")
+    p_flip.add_argument("path")
+    p_flip.add_argument("--mode", required=True, choices=["horizontal", "vertical"])
+    p_flip.add_argument("--output")
+
+    p_gray = sub.add_parser("gray", help="灰度化")
+    p_gray.add_argument("path")
+    p_gray.add_argument("--output")
+
+    p_convert = sub.add_parser("convert", help="格式转换")
+    p_convert.add_argument("path")
+    p_convert.add_argument("--format", required=True)
+    p_convert.add_argument("--output")
+
     args = parser.parse_args()
 
     if args.command == "info":
@@ -173,6 +254,14 @@ def main():
     elif args.command == "crop":
         _run(crop, args.path, left=args.left, top=args.top,
              right=args.right, bottom=args.bottom, output=args.output)
+    elif args.command == "rotate":
+        _run(rotate, args.path, angle=args.angle, output=args.output)
+    elif args.command == "flip":
+        _run(flip, args.path, mode=args.mode, output=args.output)
+    elif args.command == "gray":
+        _run(grayscale, args.path, output=args.output)
+    elif args.command == "convert":
+        _run(convert, args.path, fmt=args.format, output=args.output)
 
 
 if __name__ == "__main__":
